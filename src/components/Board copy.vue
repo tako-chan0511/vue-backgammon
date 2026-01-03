@@ -9,10 +9,6 @@
       </div>
     </div>
 
-    <div style="font-size: 0.8rem; color: #aaa; position: absolute; top: 10px; left: 10px;">
-      Debug: Bar(W:{{bar.player1}}, B:{{bar.player2}}) / CanMove: {{canPlayerMove}}
-    </div>
-
     <div class="settings-bar">
       <label class="mode-switch">
         <input type="checkbox" v-model="isCpuMode"> 
@@ -21,6 +17,7 @@
     </div>
 
     <div class="dice-controls">
+      
       <div v-if="dice.values.length > 0" class="dice-display">
         <span class="die">{{ dice.values[0] }}</span>
         <span class="die">{{ dice.values[1] }}</span>
@@ -33,17 +30,9 @@
           🤖 CPU Move...
         </span>
 
-        <button 
-          v-if="!isCpuProcessing && dice.moves.length > 0 && !canPlayerMove" 
-          @click="changeTurn" 
-          class="skip-btn"
-        >
-          Skip (No Moves)
+        <button v-if="!isCpuProcessing && dice.moves.length > 0" @click="changeTurn" class="skip-btn">
+          Skip
         </button>
-        
-        <span v-if="!isCpuProcessing && dice.moves.length > 0 && canPlayerMove" class="hint-text">
-          ※動かせる駒があります
-        </span>
       </div>
       
       <button 
@@ -141,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted, computed } from 'vue';
+import { reactive, ref, onMounted } from 'vue';
 import Cell from './Cell.vue';
 
 interface PointState { count: number; owner: 0 | 1 | 2; }
@@ -165,12 +154,6 @@ const movableIndices = ref<Set<number>>(new Set());
 
 const topIndices = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
 const bottomIndices = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
-
-// ★修正: 常に監視する計算プロパティ
-const canPlayerMove = computed(() => {
-  if (turn.value !== 1 || dice.moves.length === 0) return false;
-  return checkAnyLegalMove(1);
-});
 
 function initGame() {
   points.length = 0;
@@ -225,81 +208,35 @@ function changeTurn() {
   }
 }
 
-// ★修正: 判定ロジックの厳密化
-function checkAnyLegalMove(player: 1 | 2): boolean {
-  const uniqueDice = [...new Set(dice.moves)];
-  const barCount = player === 1 ? bar.player1 : bar.player2;
-
-  // 1. バーに駒がある場合
-  // バーから出られる場所が1つでもあれば true
-  if (barCount > 0) {
-    for (const d of uniqueDice) {
-      let target = -1;
-      if (player === 1) target = 24 - d; // 白は 23,22...18 などに入る
-      if (player === 2) target = d - 1;  // 黒は 0,1...5 などに入る
-      if (isValidMove(target, player)) {
-        return true; 
-      }
-    }
-    // バーにいるのにどこにも降りられない場合のみ false
-    return false;
-  }
-
-  // 2. 盤上の駒の移動チェック
-  for (let i = 0; i < 24; i++) {
-    if (points[i].owner === player && points[i].count > 0) {
-      for (const d of uniqueDice) {
-        let target = -1;
-        let isOff = false;
-        
-        if (player === 1) { 
-          target = i - d; 
-          if (target < 0) isOff = true; 
-        }
-        if (player === 2) { 
-          target = i + d; 
-          if (target > 23) isOff = true; 
-        }
-
-        if (isOff) {
-          // ベアリングオフ（ゴール）判定
-          if (canBearOff(player)) {
-             if (target === -1 || target === 24) return true; // ぴったりゴール
-             if (checkNoPieceBehind(i, player)) return true;  // 後ろになければゴール可
-          }
-        } else {
-          // 通常移動判定
-          if (isValidMove(target, player)) return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// --- 🤖 CPUロジック ---
+// --- 🤖 CPUロジック (改良版) ---
 async function playCpuTurn() {
   isCpuProcessing.value = true;
+  
+  // 1. 少し待つ
   await sleep(600);
   
+  // 2. ダイスを振る
   const d1 = Math.floor(Math.random() * 6) + 1;
   const d2 = Math.floor(Math.random() * 6) + 1;
-  dice.values = [d1, d2];
+  dice.values = [d1, d2]; // ★ここで画面にサイコロが表示される
   if (d1 === d2) dice.moves = [d1, d1, d1, d1];
   else dice.moves = [d1, d2];
 
+  // ★重要: ダイスを見せるために少し長めに待つ
   await sleep(1000);
 
+  // 3. 移動開始
   while (dice.moves.length > 0 && !winner.value) {
-    if (!checkAnyLegalMove(2)) {
-      console.log("CPU: No moves available (Skip)");
+    const allMoves = getAllLegalMoves(2);
+    
+    if (allMoves.length === 0) {
+      console.log("CPU: 動かせる手がありません");
       break; 
     }
 
-    const allMoves = getAllLegalMoves(2);
-    if (allMoves.length === 0) break;
-
+    // 戦略: ゴール > ヒット > ランダム
     let bestMove = allMoves[0];
+    
     const goalMove = allMoves.find(m => m.target === 999);
     const hitMove = allMoves.find(m => {
        if (m.target === 999) return false;
@@ -309,8 +246,11 @@ async function playCpuTurn() {
 
     if (goalMove) bestMove = goalMove;
     else if (hitMove) bestMove = hitMove;
-    else bestMove = allMoves[Math.floor(Math.random() * allMoves.length)];
+    else {
+      bestMove = allMoves[Math.floor(Math.random() * allMoves.length)];
+    }
 
+    // 選択アニメーション
     if (bestMove.source === 'bar') {
       selectedBar.value = 2;
       handleBarClick(2); 
@@ -321,8 +261,12 @@ async function playCpuTurn() {
     
     await sleep(600); 
 
-    if (bestMove.target === 999) executeBearOff();
-    else executeMove(bestMove.target);
+    // 移動実行
+    if (bestMove.target === 999) {
+      executeBearOff();
+    } else {
+      executeMove(bestMove.target);
+    }
 
     await sleep(600); 
   }
@@ -333,38 +277,33 @@ async function playCpuTurn() {
 
 function getAllLegalMoves(player: 2): { source: number | 'bar', target: number }[] {
   const moves: { source: number | 'bar', target: number }[] = [];
-  const uniqueDice = [...new Set(dice.moves)];
-
+  
   if (bar.player2 > 0) {
-    uniqueDice.forEach(d => {
-      const target = d - 1;
-      if (isValidMove(target, player)) moves.push({ source: 'bar', target });
+    selectedBar.value = 2;
+    handleBarClick(2); 
+    movableIndices.value.forEach(target => {
+      moves.push({ source: 'bar', target });
     });
+    clearSelection(); 
     return moves;
   }
 
   for (let i = 0; i < 24; i++) {
     if (points[i].owner === player && points[i].count > 0) {
-      const canOff = canBearOff(player);
-      uniqueDice.forEach(d => {
-        const target = i + d;
-        let isOff = target > 23;
-        
-        if (isOff) {
-          if (canOff) {
-            if (target === 24) moves.push({ source: i, target: 999 });
-            else if (checkNoPieceBehind(i, player)) moves.push({ source: i, target: 999 });
-          }
-        } else {
-          if (isValidMove(target, player)) moves.push({ source: i, target });
-        }
+      selectedPoint.value = i;
+      calculateMovablePoints(i);
+      movableIndices.value.forEach(target => {
+        moves.push({ source: i, target });
       });
     }
   }
+  clearSelection();
   return moves;
 }
 
-function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // --- 共通ロジック ---
 
@@ -382,6 +321,7 @@ function canBearOff(player: 1 | 2): boolean {
 function handleBarClick(owner: 1 | 2) {
   if (isCpuProcessing.value && owner === 1) return; 
   if (!isCpuProcessing.value && owner === 2) return; 
+
   if (winner.value || turn.value !== owner || dice.moves.length === 0) return;
   const count = owner === 1 ? bar.player1 : bar.player2;
   if (count <= 0) return;
@@ -403,17 +343,20 @@ function handleBarClick(owner: 1 | 2) {
 
 function handlePointClick(index: number) {
   if (isCpuProcessing.value) return; 
+
   if (winner.value || dice.moves.length === 0) return;
 
   if (movableIndices.value.has(index)) {
     executeMove(index);
     return;
   }
+
   const myBarCount = turn.value === 1 ? bar.player1 : bar.player2;
   if (myBarCount > 0) {
     if (!isCpuMode.value) alert("バーに駒があります！先に復活させてください。");
     return;
   }
+
   const p = points[index];
   if (p.count > 0 && p.owner === turn.value) {
     selectedPoint.value = index;
@@ -432,16 +375,30 @@ function calculateMovablePoints(fromIndex: number) {
   uniqueDice.forEach(die => {
     let target = -1;
     let isOff = false;
-    if (turn.value === 1) { target = fromIndex - die; if (target < 0) isOff = true; }
-    if (turn.value === 2) { target = fromIndex + die; if (target > 23) isOff = true; }
+
+    if (turn.value === 1) {
+      target = fromIndex - die;
+      if (target < 0) isOff = true;
+    }
+    if (turn.value === 2) {
+      target = fromIndex + die;
+      if (target > 23) isOff = true;
+    }
 
     if (isOff) {
       if (canOff) {
-        if (target === -1 || target === 24) possibleMoves.add(999); 
-        else if (checkNoPieceBehind(fromIndex, turn.value)) possibleMoves.add(999);
+        if (target === -1 || target === 24) {
+             possibleMoves.add(999); 
+        } else {
+          if (checkNoPieceBehind(fromIndex, turn.value)) {
+             possibleMoves.add(999);
+          }
+        }
       }
     } else {
-      if (isValidMove(target, turn.value)) possibleMoves.add(target);
+      if (isValidMove(target, turn.value)) {
+        possibleMoves.add(target);
+      }
     }
   });
   movableIndices.value = possibleMoves;
@@ -472,6 +429,7 @@ function isValidMove(targetIndex: number, player: 1 | 2): boolean {
 function executeBearOff() {
   if (selectedPoint.value === null) return;
   const player = turn.value;
+  
   points[selectedPoint.value].count--;
   if (points[selectedPoint.value].count === 0) points[selectedPoint.value].owner = 0;
 
@@ -538,6 +496,7 @@ onMounted(() => { initGame(); });
 </script>
 
 <style scoped>
+/* スタイル（以前と同じ） */
 .game-container {
   display: flex; flex-direction: column; align-items: center;
   font-family: sans-serif; background-color: #222; color: #fff;
@@ -552,7 +511,6 @@ onMounted(() => { initGame(); });
   margin-bottom: 10px; gap: 10px;
 }
 .cpu-status-text { font-weight: bold; color: yellow; margin-left: 10px; animation: pulse 1s infinite; }
-.hint-text { color: #aaa; font-size: 0.8rem; margin-left: 10px; }
 .dice-display { display: flex; gap: 10px; align-items: center; }
 .die {
   background: white; color: black; font-weight: bold; font-size: 1.5rem;
@@ -567,19 +525,22 @@ onMounted(() => { initGame(); });
 .skip-btn {
   padding: 5px 10px; cursor: pointer; background-color: #666; color: white; border: none; border-radius: 3px;
 }
-/* 以降は変更なし */
+
 .main-board {
   display: flex; background-color: #5c3a21; border: 10px solid #3e2714;
   border-radius: 8px; padding: 5px; height: 500px; width: 750px; 
 }
+
 .bar-area {
   width: 50px; background-color: #331f0f; display: flex; flex-direction: column;
   justify-content: space-between; align-items: center; border-right: 2px solid #222; padding: 5px 0;
 }
 .bar-center { font-weight: bold; writing-mode: vertical-rl; color: #aaa; }
+
 .points-area { flex: 1; display: flex; flex-direction: column; }
 .row { flex: 1; display: flex; }
 .bottom-row { border-top: 2px solid rgba(0,0,0,0.2); }
+
 .bear-off-area {
   width: 50px; background-color: #3e2714; display: flex; flex-direction: column;
   justify-content: space-between; align-items: center; border-left: 2px solid #222; padding: 5px 0;
@@ -604,6 +565,7 @@ onMounted(() => { initGame(); });
   cursor: pointer; animation: pulse 1s infinite;
 }
 @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
 .winner-modal {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 999;
