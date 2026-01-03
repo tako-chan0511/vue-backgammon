@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/vue-backgammon/dev-sw.js?dev-sw', { scope: '/vue-backgammon/', type: 'classic' })
