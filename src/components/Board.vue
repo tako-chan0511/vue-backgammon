@@ -594,6 +594,16 @@ onMounted(() => { initGame(); });
 }
 .white-checker { background-color: #fff; border: 1px solid #ccc; }
 .black-checker { background-color: #333; border: 1px solid #000; }
+/* BAR と OFF エリアでは黒駒を少し明るめにして視認性を向上 */
+.bar-area .black-checker,
+.bar-half .black-checker,
+.bear-off-area .black-checker,
+.bear-half .black-checker,
+.off-checker.black-checker {
+  background-color: #5a5a5a;
+  border: 1px solid #222;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.25);
+}
 .selected { border: 2px solid orange; box-shadow: 0 0 10px orange; }
 
 .bear-off-highlight {
