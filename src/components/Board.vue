@@ -1,6 +1,6 @@
 <template>
   <div class="game-container">
-    <h2>🎲 Vue Backgammon 🎲</h2>
+    <h2>🎲 Vue3 Backgammon 🎲</h2>
 
     <div v-if="winner" class="winner-modal">
       <div class="winner-content">
