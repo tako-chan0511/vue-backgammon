@@ -131,6 +131,13 @@
 
     <div class="controls">
       <button @click="initGame" class="reset-btn">Reset Game</button>
+      <button 
+        @click="undo" 
+        class="undo-btn"
+        :disabled="history.length === 0 || isCpuProcessing"
+      >
+        ↶ Undo
+      </button>
       <div class="status">
         手番: <strong :style="{ color: turn === 1 ? '#fff' : '#aaa' }">
           {{ turn === 1 ? '白 (あなた)' : '黒 (CPU)' }}
@@ -161,7 +168,18 @@ const dice = reactive<{ values: number[], moves: number[] }>({ values: [], moves
 
 const selectedPoint = ref<number | null>(null);
 const selectedBar = ref<number | null>(null); 
-const movableIndices = ref<Set<number>>(new Set()); 
+const movableIndices = ref<Set<number>>(new Set());
+
+// ★ Undo機能用の状態履歴
+interface GameState {
+  points: PointState[];
+  bar: { player1: number; player2: number };
+  bearOff: { player1: number; player2: number };
+  turn: 1 | 2;
+  dice: { values: number[]; moves: number[] };
+}
+
+const history = ref<GameState[]>([]); 
 
 const topIndices = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
 const bottomIndices = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
@@ -181,6 +199,7 @@ function initGame() {
   winner.value = null;
   dice.values = []; dice.moves = [];
   isCpuProcessing.value = false;
+  history.value = [];
   clearSelection();
 
   setupPoint(0, 2, 2);   
@@ -198,8 +217,48 @@ function setupPoint(index: number, count: number, owner: 1 | 2) {
   if (points[index]) { points[index].count = count; points[index].owner = owner; }
 }
 
+function createSnapshot(): GameState {
+  return {
+    points: JSON.parse(JSON.stringify(points)),
+    bar: { ...bar },
+    bearOff: { ...bearOff },
+    turn: turn.value,
+    dice: { values: [...dice.values], moves: [...dice.moves] }
+  };
+}
+
+function saveSnapshot() {
+  history.value.push(createSnapshot());
+}
+
+function undo() {
+  if (history.value.length === 0) return;
+  
+  const lastState = history.value.pop();
+  if (!lastState) return;
+  
+  // 状態をリストア
+  points.length = 0;
+  for (const p of lastState.points) {
+    points.push({ ...p });
+  }
+  
+  bar.player1 = lastState.bar.player1;
+  bar.player2 = lastState.bar.player2;
+  bearOff.player1 = lastState.bearOff.player1;
+  bearOff.player2 = lastState.bearOff.player2;
+  turn.value = lastState.turn;
+  dice.values = [...lastState.dice.values];
+  dice.moves = [...lastState.dice.moves];
+  
+  clearSelection();
+  winner.value = null;
+}
+
 function rollDice() {
   if (isCpuProcessing.value) return;
+
+  saveSnapshot();
 
   const d1 = Math.floor(Math.random() * 6) + 1;
   const d2 = Math.floor(Math.random() * 6) + 1;
@@ -471,6 +530,9 @@ function isValidMove(targetIndex: number, player: 1 | 2): boolean {
 
 function executeBearOff() {
   if (selectedPoint.value === null) return;
+  
+  saveSnapshot();
+  
   const player = turn.value;
   points[selectedPoint.value].count--;
   if (points[selectedPoint.value].count === 0) points[selectedPoint.value].owner = 0;
@@ -499,6 +561,8 @@ function executeBearOff() {
 }
 
 function executeMove(toIndex: number) {
+  saveSnapshot();
+  
   let usedDie = 0;
   if (selectedBar.value !== null) {
     if (turn.value === 1) usedDie = 24 - toIndex;
@@ -620,5 +684,20 @@ onMounted(() => { initGame(); });
 }
 .winner-content { text-align: center; }
 .reset-btn { padding: 5px 10px; cursor: pointer; }
+.undo-btn {
+  padding: 5px 10px;
+  margin-left: 10px;
+  cursor: pointer;
+  background-color: #ff9800;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.undo-btn:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .controls { margin-top: 20px; text-align: center; }
 </style>
