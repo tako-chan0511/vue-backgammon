@@ -60,6 +60,18 @@
     </div>
 
     <div class="main-board">
+      <!-- ★追加: 白(Player1)の残マス数表示 (左上) -->
+      <div class="pip-count pip-count-left">
+        <div class="pip-label">⚪ 残マス数</div>
+        <div class="pip-value">{{ pipCountWhite }}</div>
+      </div>
+
+      <!-- ★追加: 黒(Player2)の残マス数表示 (右上) -->
+      <div class="pip-count pip-count-right">
+        <div class="pip-label">⚫ 残マス数</div>
+        <div class="pip-value">{{ pipCountBlack }}</div>
+      </div>
+
       <div class="bar-area">
         <div class="bar-half top-bar">
           <div 
@@ -188,6 +200,39 @@ const bottomIndices = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 const canPlayerMove = computed(() => {
   if (turn.value !== 1 || dice.moves.length === 0) return false;
   return checkAnyLegalMove(1);
+});
+
+// ★追加: Pip Count（残マス数）の計算
+const pipCountWhite = computed(() => {
+  let total = 0;
+  
+  // BARにいる駒: 25マス分
+  total += bar.player1 * 25;
+  
+  // 盤上の駒: (i + 1) がゴールまでの距離
+  for (let i = 0; i < 24; i++) {
+    if (points[i].owner === 1) {
+      total += points[i].count * (i + 1);
+    }
+  }
+  
+  return total;
+});
+
+const pipCountBlack = computed(() => {
+  let total = 0;
+  
+  // BARにいる駒: 25マス分
+  total += bar.player2 * 25;
+  
+  // 盤上の駒: (24 - i) がゴールまでの距離
+  for (let i = 0; i < 24; i++) {
+    if (points[i].owner === 2) {
+      total += points[i].count * (24 - i);
+    }
+  }
+  
+  return total;
 });
 
 function initGame() {
@@ -633,8 +678,41 @@ onMounted(() => { initGame(); });
 }
 /* 以降は変更なし */
 .main-board {
+  position: relative;
   display: flex; background-color: #5c3a21; border: 10px solid #3e2714;
   border-radius: 8px; padding: 5px; height: 500px; width: 750px; 
+}
+
+/* ★追加: Pip Count表示のスタイル */
+.pip-count {
+  position: absolute;
+  top: -90px;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 8px 12px;
+  border-radius: 8px;
+  z-index: 10;
+  min-width: 100px;
+  text-align: center;
+}
+
+.pip-count-left {
+  left: 10px;
+}
+
+.pip-count-right {
+  right: 10px;
+}
+
+.pip-label {
+  font-size: 0.8rem;
+  color: #ccc;
+  margin-bottom: 4px;
+}
+
+.pip-value {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #fff;
 }
 .bar-area {
   width: 50px; background-color: #331f0f; display: flex; flex-direction: column;
